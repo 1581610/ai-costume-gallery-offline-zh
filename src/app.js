@@ -159,7 +159,7 @@ function toggleFav(value) {
 function download(text,name,type='application/json') {const url=URL.createObjectURL(new Blob([text],{type}));const a=document.createElement('a');a.href=url;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);}
 function csv(items) {
   const safe=v=>{let s=String(v??'');if(/^[=+\-@\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
-  const rows=[['id','分类','服装名','中文检索词','英文检索词','原图路径'],...items.map(d=>[d.id,d.category,d.name,d.keywordsZh,d.keywordsEn,d.full])];
+  const rows=[['id','分类','服装名','中文检索词','英文检索词','英文生图提示词','原图路径'],...items.map(d=>[d.id,d.category,d.name,d.keywordsZh,d.keywordsEn,d.prompt||'',d.full])];
   download('\ufeff'+rows.map(row=>row.map(safe).join(',')).join('\r\n'),'costume-index-'+new Date().toISOString().slice(0,10)+'.csv','text/csv;charset=utf-8');toast('已导出 '+items.length+' 张图片的索引');
 }
 function promptDialog(title,html,confirm='确定') {
