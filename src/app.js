@@ -5,6 +5,8 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const DATA = JSON.parse($('#costumeData').textContent);
+const HOSTED = document.querySelector('meta[name="gallery-mode"]').content === 'hosted';
+let downloadBusy=false, downloadFallbackId=null, hostedImageUrl=null;
 DATA.forEach(d=>Object.assign(d,{pose:d.id,num:d.id,line:d.category,cat:d.types[0]||'其他',angle:'原图',ja:d.keywordsEn}));
 const byId = new Map(DATA.map(d => [d.id, d]));
 const ANGLES = ['原图'];
@@ -125,7 +127,7 @@ function nav(){
   if(!composing&&document.activeElement!==$('#search'))$('#search').value=S.query;
   document.documentElement.dataset.theme=S.theme;document.documentElement.style.setProperty('--card-size',S.density+'px');document.body.classList.toggle('show-ja',S.ja);
   const c=collection(),heading=c?['REFERENCE COLLECTION',c.name,'把相关的穿搭，放在一起参考。']:({all:['COSTUME REFERENCE','服装参考','挑选穿搭，组合你的画面。'],fav:['YOUR FAVOURITES','我的收藏','留下你想再次使用的穿搭。'],recent:['RECENTLY VIEWED','最近浏览','接着上一次的搭配构思。']}[S.scope]||['COSTUME REFERENCE','服装参考','挑选穿搭，组合你的画面。']);
-  $('#pageKicker').textContent=heading[0];$('#pageTitle').textContent=heading[1];$('#pageSubtitle').textContent=heading[2];$('#collectionActions').hidden=!c;
+  $('#pageKicker').textContent=heading[0];$('#pageTitle').textContent=heading[1];$('#pageSubtitle').textContent=heading[2]+(HOSTED?' 图片由原站加载。':'');$('#collectionActions').hidden=!c;
 }
 function chips() {
   $('#activeFilters').innerHTML=[['line',S.line],['cat',S.cat],['angle',S.angle],['query',S.query]].filter(([,v])=>v).map(([k,v])=>`<button class="filter-chip" data-clear="${k}" aria-label="移除筛选 ${esc(v)}">${esc(v)}<span>×</span></button>`).join('');
@@ -189,7 +191,7 @@ function viewerInfo(){
   $('#viewerMeta').innerHTML=`<dt>分类</dt><dd>${esc(d.category)}</dd><dt>尺寸</dt><dd>${d.size?d.size.join(' × '):'原始 PNG'}</dd><dt>格式</dt><dd>PNG${d.bytes?' · '+(d.bytes/1048576).toFixed(1)+' MB':''}</dd><dt>编号</dt><dd>${d.id}</dd>`;
   const on=store.favImages.includes(d.id);$('#favImage').textContent=on?'已收藏此套':'收藏此套';$('#favImage').classList.toggle('on',on);$('#favImage').setAttribute('aria-pressed',on);
   $('#pinImage').textContent=store.board.includes(d.id)?'移出参考台':'放入参考台';$('#pinImage').classList.toggle('on',store.board.includes(d.id));$('#downloadImage').href=d.full;$('#downloadImage').download=d.id+'.png';
-  $('#downloadImage').textContent=location.protocol==='file:'?'打开原图':'保存原图';$('#downloadImage').target=location.protocol==='file:'?'_blank':'_self';$('#downloadImage').rel='noopener';
+  $('#downloadImage').textContent=downloadFallbackId===d.id?'打开原站原图':location.protocol==='file:'?'打开原图':'保存原图';$('#downloadImage').target=location.protocol==='file:'||downloadFallbackId===d.id?'_blank':'_self';$('#downloadImage').rel='noopener';
   $('#costumeNote').value=store.notes[d.id]||'';
 }
 function transform() {
@@ -205,16 +207,25 @@ function setZoom(z){const img=$('#fullImage'),max=Math.max(5,img.naturalWidth/Ma
 function imageMime(filename){return filename.endsWith('.webp')?'image/webp':/\.jpe?g$/i.test(filename)?'image/jpeg':'image/png';}
 function openImage(id) {
   const d=byId.get(id);if(!d)return;
+  if(current?.id!==id)downloadFallbackId=null;
   if(!$('#viewer').open){returnFocus={element:document.activeElement,pose:d.pose,id:d.id};viewerGroups=filteredGroups.map(e=>({group:e.group,items:[...e.items]}));$('#viewer').showModal();document.body.style.overflow='hidden';}
   points.clear();gesture=null;$('#stage').classList.remove('dragging');
   current=d;fit();mirror=false;transform();viewerInfo();
   store.recent=[d.id,...store.recent.filter(x=>x!==d.id)].slice(0,150);save(d.id);
   const token=++loadToken,img=$('#fullImage');img.src=d.preview;img.alt=d.name;$('#imageStatus').textContent='正在读取原图…';
-  const full=new Image();full.onload=()=>{if(token!==loadToken)return;img.src=d.full;$('#imageStatus').textContent='';};full.onerror=()=>{if(token===loadToken)$('#imageStatus').textContent='原图读取失败，当前显示预览图。请检查本机图片是否完整。';};full.src=d.full;
+  if(hostedImageUrl){URL.revokeObjectURL(hostedImageUrl);hostedImageUrl=null;}
+  if(HOSTED){
+    fetch(d.full,{credentials:'omit'}).then(response=>{if(!response.ok)throw new Error('HTTP '+response.status);return response.blob();}).then(blob=>{
+      if(!blob.size||!blob.type.startsWith('image/'))throw new Error('Not an image');
+      if(token!==loadToken)return;hostedImageUrl=URL.createObjectURL(blob);img.src=hostedImageUrl;$('#imageStatus').textContent='';
+    }).catch(()=>{if(token===loadToken)$('#imageStatus').textContent='原图读取失败，请检查网络或打开原站原图。';});
+  }else{
+    const full=new Image();full.onload=()=>{if(token!==loadToken)return;img.src=d.full;$('#imageStatus').textContent='';};full.onerror=()=>{if(token===loadToken)$('#imageStatus').textContent='原图读取失败，当前显示预览图。请检查本机图片是否完整。';};full.src=d.full;
+  }
 }
 function closeViewer(){if($('#viewer').open)$('#viewer').close();}
 $('#viewer').addEventListener('close',()=>{
-  loadToken++;current=null;imageExporting=false;points.clear();gesture=null;document.body.style.overflow='';draw();
+  loadToken++;current=null;imageExporting=false;if(hostedImageUrl){URL.revokeObjectURL(hostedImageUrl);hostedImageUrl=null;}points.clear();gesture=null;document.body.style.overflow='';draw();
   const focus=returnFocus?.element?.isConnected?returnFocus.element:
     $$('#grid [data-id]').find(e=>e.dataset.id===returnFocus?.id)||
     $$('#grid [data-pose]').find(e=>e.dataset.pose===returnFocus?.pose)||$('#grid .card,#grid [data-open]')||$('#search');
@@ -247,7 +258,7 @@ $('#grid').onchange=e=>{const b=e.target.closest('[data-select]');if(!b)return;f
 $('#grid').onkeydown=e=>{if(e.target.matches('.card')&&['Enter',' '].includes(e.key)){e.preventDefault();openImage(e.target.dataset.id);}};
 $('#selectionClear').onclick=()=>{selected.clear();draw(false);};$('#selectVisible').onclick=()=>{for(const r of results.slice(0,S.shown)){const ds=S.mode==='single'?[r]:r.items;ds.forEach(d=>selected.add(d.id));}draw(false);};
 $('#selectionCollection').onclick=()=>addToCollection([...selected]);$('#selectionCsv').onclick=()=>csv(DATA.filter(d=>selected.has(d.id)));$('#exportCsv').onclick=()=>csv(matches);
-$('#copyPaths').onclick=async()=>{const text=matches.map(d=>d.full).join('\n');try{await navigator.clipboard.writeText(text);toast('已复制 '+matches.length+' 条相对路径');}catch{await promptDialog('图片相对路径','<p>浏览器未允许直接复制，可在下面全选后复制。</p><textarea id="dialogValue" aria-label="图片路径" rows="8" readonly>'+esc(text)+'</textarea>','关闭');}};
+$('#copyPaths').onclick=async()=>{const text=matches.map(d=>d.full).join('\n');try{await navigator.clipboard.writeText(text);toast('已复制 '+matches.length+(HOSTED?' 条图片地址':' 条相对路径'));}catch{await promptDialog(HOSTED?'图片地址':'图片相对路径','<p>浏览器未允许直接复制，可在下面全选后复制。</p><textarea id="dialogValue" aria-label="图片路径" rows="8" readonly>'+esc(text)+'</textarea>','关闭');}};
 $('#newCollection').onclick=()=>newCollection();$('#renameCollection').onclick=async()=>{const c=collection();if(!c)return;const value=await promptDialog('重命名集合',`<input id="dialogValue" aria-label="集合名称" maxlength="60" value="${esc(c.name)}">`);if(typeof value==='string'&&value.trim()){c.name=value.trim();save();draw();}};
 $('#removeFromCollection').onclick=()=>{const c=collection();if(!c)return;if(!selected.size){toast('请先勾选要移出的图片');return;}c.items=c.items.filter(id=>!selected.has(id));selected.clear();save();draw();};
 $('#deleteCollection').onclick=async()=>{const c=collection();if(!c)return;if(await promptDialog('删除参考集合',`<p>删除「${esc(c.name)}」？仅移除集合记录，图片和收藏保留。操作前可导出个人资料。</p>`,'删除集合')){store.collections=store.collections.filter(x=>x!==c);update({scope:'all'});}};
@@ -265,6 +276,24 @@ $('#importInput').onchange=async e=>{
   }catch(error){toast('导入失败：'+error.message);}finally{e.target.value='';}
 };
 $('#closeViewer').onclick=closeViewer;
+$('#copyPrompt').onclick=async()=>{
+  if(!current)return;const text=current.keywordsEn;
+  try{await navigator.clipboard.writeText(text);toast('已复制英文服装关键词');}
+  catch{await promptDialog('复制英文服装关键词','<p>浏览器未允许直接复制，请全选后复制。这些是原始检索词，可作为提示词参考。</p><textarea id="dialogValue" aria-label="英文服装关键词" rows="5" readonly>'+esc(text)+'</textarea>','关闭');}
+};
+$('#downloadImage').addEventListener('click',async event=>{
+  if(!HOSTED||!current||downloadFallbackId===current.id)return;
+  event.preventDefault();if(downloadBusy)return;
+  const d=current,button=$('#downloadImage');downloadBusy=true;button.textContent='正在保存…';
+  try{
+    const response=await fetch(d.full,{credentials:'omit'});
+    if(!response.ok)throw new Error('HTTP '+response.status);
+    const blob=await response.blob();if(!blob.size||!blob.type.startsWith('image/'))throw new Error('Not an image');
+    const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=d.id+'.png';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
+  }catch{
+    downloadFallbackId=d.id;toast('原图保存失败，请点击“打开原站原图”后另存。');
+  }finally{downloadBusy=false;if(current)viewerInfo();}
+});
 $('#prevImage').onclick=()=>stepImage(-1);$('#nextImage').onclick=()=>stepImage(1);
 $('#zoomIn').onclick=()=>setZoom(zoom*1.35);$('#zoomOut').onclick=()=>setZoom(zoom/1.35);$('#fitImage').onclick=fit;$('#mirrorImage').onclick=()=>{mirror=!mirror;transform();};
 $('#favImage').onclick=()=>current&&toggleFav(current.id);$('#pinImage').onclick=()=>current&&pin(current.id);$('#addCollection').onclick=()=>current&&addToCollection([current.id]);
@@ -287,7 +316,7 @@ $('#stage').addEventListener('pointerdown',e=>{
 $('#fullImage').addEventListener('dragstart',event=>{
   if(!current||zoom>1&&!event.altKey){event.preventDefault();return;}
   const image=$('#fullImage'),url=new URL(current.full,document.baseURI).href;
-  if(image.src!==url||!image.complete||!image.naturalWidth){event.preventDefault();toast('原图尚未就绪，请等加载完成后拖出，或使用原图按钮');return;}
+  if(image.src!==(HOSTED?hostedImageUrl:url)||!image.complete||!image.naturalWidth){event.preventDefault();toast('原图尚未就绪，请等加载完成后拖出，或使用原图按钮');return;}
   const filename=current.full.split('/').pop();
   const mime=imageMime(filename);
   // Preserve native bitmap/file formats and add full-resolution URL formats
@@ -307,7 +336,7 @@ $('#viewer').addEventListener('drop',event=>{if(imageExporting)event.preventDefa
 $('#stage').addEventListener('pointermove',e=>{if(!points.has(e.pointerId)||!gesture)return;points.set(e.pointerId,{x:e.clientX,y:e.clientY});if(points.size===2&&gesture.distance){const p=[...points.values()];setZoom(gesture.zoom*Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)/gesture.distance);}else if(points.size===1&&gesture.pan&&zoom>1){const rect=$('#stage').getBoundingClientRect();pan={x:Math.max(-rect.width*zoom/2,Math.min(rect.width*zoom/2,gesture.pan.x+e.clientX-gesture.x)),y:Math.max(-rect.height*zoom/2,Math.min(rect.height*zoom/2,gesture.pan.y+e.clientY-gesture.y))};transform();}});
 function pointerEnd(e){const start=gesture;points.delete(e.pointerId);if(!points.size){$('#stage').classList.remove('dragging');if(e.type==='pointerup'&&start?.pan&&zoom===1&&e.pointerType==='touch'&&Math.abs(e.clientX-start.x)>60&&Math.abs(e.clientX-start.x)>Math.abs(e.clientY-start.y)*1.5)stepImage(e.clientX<start.x?1:-1);gesture=null;}else{const p=[...points.values()][0];gesture={x:p.x,y:p.y,pan:{...pan}};}}
 $('#stage').addEventListener('pointerup',pointerEnd);$('#stage').addEventListener('pointercancel',pointerEnd);
-$('#helpBtn').onclick=()=>promptDialog('使用衣装索引','<p>搜索支持中文、英文、材质、颜色和编号；多个词用空格分隔，例如“蕾丝 黑色”。颜色和类型按整套穿搭的原始检索词匹配，标题由检索词整理，不是原作者为每套服装命名。</p><p>点开服装：完整看图，滚轮／双指缩放，放大后拖动平移。未放大时可拖出原图，放大后按 Alt 拖出；左右键换服装，F 收藏。</p><p>使用“打开图库.cmd”可启动离线本机服务并直接保存原图。直接双击 HTML 时，原图会在新标签页打开，可右键另存；接收软件不支持拖放时，也可先保存再导入。</p><p>参考台最多固定 4 套。收藏、集合和备注保存在浏览器。换入口或清理浏览器前先导出资料；不同入口的记录独立。</p><div class="help-actions"><button type="button" class="btn" id="helpBackup">导出个人资料</button> <label class="btn">导入资料<input type="file" id="helpImport" accept=".json" hidden></label></div><p>原素材作者：ギア。原站允许用于作品创作、商业创作、编辑及参考，禁止图片文件本身的转载、再分发和转售。详情以顶部素材原站的说明为准。</p>','关闭').then(()=>{});
+$('#helpBtn').onclick=()=>promptDialog('使用衣装索引',(HOSTED?'<p>在线演示从原站加载图片，需要网络；保存失败时可打开原站原图后另存。</p>':'')+'<p>搜索支持中文、英文、材质、颜色和编号；多个词用空格分隔，例如“蕾丝 黑色”。颜色和类型按整套穿搭的原始检索词匹配，标题由检索词整理，不是原作者为每套服装命名。</p><p>点开服装：完整看图，滚轮／双指缩放，放大后拖动平移。未放大时可拖出原图，放大后按 Alt 拖出；左右键换服装，F 收藏。</p><p>使用“打开图库.cmd”可启动离线本机服务并直接保存原图。直接双击 HTML 时，原图会在新标签页打开，可右键另存；接收软件不支持拖放时，也可先保存再导入。</p><p>参考台最多固定 4 套。收藏、集合和备注保存在浏览器。换入口或清理浏览器前先导出资料；不同入口的记录独立。</p><div class="help-actions"><button type="button" class="btn" id="helpBackup">导出个人资料</button> <label class="btn">导入资料<input type="file" id="helpImport" accept=".json" hidden></label></div><p>原素材作者：ギア。原站允许用于作品创作、商业创作、编辑及参考，禁止图片文件本身的转载、再分发和转售。详情以顶部素材原站的说明为准。</p>','关闭').then(()=>{});
 $('#dialogBody').addEventListener('click',e=>{if(e.target.id==='helpBackup')$('#backupBtn').click();});
 $('#dialogBody').addEventListener('change',async e=>{
   if(e.target.id!=='helpImport'||!e.target.files.length)return;

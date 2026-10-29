@@ -5,4 +5,5 @@ tests/artifacts/
 data/download-errors.json
 
 /assets/
+/dist/
 .venv/
