@@ -185,7 +185,7 @@ async function addToCollection(ids) {
 }
 function viewerInfo(){
   if(!current)return;const d=current,i=viewerGroups.findIndex(e=>e.group.id===d.id);
-  $('#viewerNumber').textContent=d.id+' / '+d.category;$('#viewerTitle').textContent=d.name;$('#viewerKeywords').textContent=d.keywordsZh;$('#viewerEn').textContent=d.keywordsEn;
+  $('#viewerNumber').textContent=d.id+' / '+d.category;$('#viewerTitle').textContent=d.name;$('#viewerKeywords').textContent=d.keywordsZh;$('#viewerPrompt').textContent=d.prompt||d.keywordsEn;$('#viewerEn').textContent=d.keywordsEn;
   $('#viewerPosition').textContent=(i+1)+' / '+viewerGroups.length;
   $('#prevImage').disabled=i<=0;$('#nextImage').disabled=i>=viewerGroups.length-1;
   $('#viewerMeta').innerHTML=`<dt>分类</dt><dd>${esc(d.category)}</dd><dt>尺寸</dt><dd>${d.size?d.size.join(' × '):'原始 PNG'}</dd><dt>格式</dt><dd>PNG${d.bytes?' · '+(d.bytes/1048576).toFixed(1)+' MB':''}</dd><dt>编号</dt><dd>${d.id}</dd>`;
@@ -277,10 +277,11 @@ $('#importInput').onchange=async e=>{
 };
 $('#closeViewer').onclick=closeViewer;
 $('#copyPrompt').onclick=async()=>{
-  if(!current)return;const text=current.keywordsEn;
-  try{await navigator.clipboard.writeText(text);toast('已复制英文服装关键词');}
-  catch{await promptDialog('复制英文服装关键词','<p>浏览器未允许直接复制，请全选后复制。这些是原始检索词，可作为提示词参考。</p><textarea id="dialogValue" aria-label="英文服装关键词" rows="5" readonly>'+esc(text)+'</textarea>','关闭');}
+  if(!current)return;const text=current.prompt||current.keywordsEn;
+  try{await navigator.clipboard.writeText(text);toast('已复制英文生图提示词');}
+  catch{await promptDialog('复制英文生图提示词','<p>浏览器未允许直接复制，请全选后复制。</p><textarea id="dialogValue" aria-label="英文生图提示词" rows="6" readonly>'+esc(text)+'</textarea>','关闭');}
 };
+$('#copyPrompts').onclick=async()=>{const text=matches.map(d=>d.prompt||d.keywordsEn).join('\n\n');try{await navigator.clipboard.writeText(text);toast('已复制 '+matches.length+' 条提示词');}catch{await promptDialog('复制提示词','<p>浏览器未允许直接复制，可在下面全选后复制。</p><textarea id="dialogValue" aria-label="英文提示词" rows="10" readonly>'+esc(text)+'</textarea>','关闭');}};
 $('#downloadImage').addEventListener('click',async event=>{
   if(!HOSTED||!current||downloadFallbackId===current.id)return;
   event.preventDefault();if(downloadBusy)return;
@@ -336,7 +337,7 @@ $('#viewer').addEventListener('drop',event=>{if(imageExporting)event.preventDefa
 $('#stage').addEventListener('pointermove',e=>{if(!points.has(e.pointerId)||!gesture)return;points.set(e.pointerId,{x:e.clientX,y:e.clientY});if(points.size===2&&gesture.distance){const p=[...points.values()];setZoom(gesture.zoom*Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)/gesture.distance);}else if(points.size===1&&gesture.pan&&zoom>1){const rect=$('#stage').getBoundingClientRect();pan={x:Math.max(-rect.width*zoom/2,Math.min(rect.width*zoom/2,gesture.pan.x+e.clientX-gesture.x)),y:Math.max(-rect.height*zoom/2,Math.min(rect.height*zoom/2,gesture.pan.y+e.clientY-gesture.y))};transform();}});
 function pointerEnd(e){const start=gesture;points.delete(e.pointerId);if(!points.size){$('#stage').classList.remove('dragging');if(e.type==='pointerup'&&start?.pan&&zoom===1&&e.pointerType==='touch'&&Math.abs(e.clientX-start.x)>60&&Math.abs(e.clientX-start.x)>Math.abs(e.clientY-start.y)*1.5)stepImage(e.clientX<start.x?1:-1);gesture=null;}else{const p=[...points.values()][0];gesture={x:p.x,y:p.y,pan:{...pan}};}}
 $('#stage').addEventListener('pointerup',pointerEnd);$('#stage').addEventListener('pointercancel',pointerEnd);
-$('#helpBtn').onclick=()=>promptDialog('使用衣装索引',(HOSTED?'<p>在线演示从原站加载图片，需要网络；保存失败时可打开原站原图后另存。</p>':'')+'<p>搜索支持中文、英文、材质、颜色和编号；多个词用空格分隔，例如“蕾丝 黑色”。颜色和类型按整套穿搭的原始检索词匹配，标题由检索词整理，不是原作者为每套服装命名。</p><p>点开服装：完整看图，滚轮／双指缩放，放大后拖动平移。未放大时可拖出原图，放大后按 Alt 拖出；左右键换服装，F 收藏。</p><p>使用“打开图库.cmd”可启动离线本机服务并直接保存原图。直接双击 HTML 时，原图会在新标签页打开，可右键另存；接收软件不支持拖放时，也可先保存再导入。</p><p>参考台最多固定 4 套。收藏、集合和备注保存在浏览器。换入口或清理浏览器前先导出资料；不同入口的记录独立。</p><div class="help-actions"><button type="button" class="btn" id="helpBackup">导出个人资料</button> <label class="btn">导入资料<input type="file" id="helpImport" accept=".json" hidden></label></div><p>原素材作者：ギア。原站允许用于作品创作、商业创作、编辑及参考，禁止图片文件本身的转载、再分发和转售。详情以顶部素材原站的说明为准。</p>','关闭').then(()=>{});
+$('#helpBtn').onclick=()=>promptDialog('使用衣装索引',(HOSTED?'<p>在线演示从原站加载图片，需要网络；保存失败时可打开原站原图后另存。</p>':'')+'<p>搜索支持中文、英文、材质、颜色和编号；多个词用空格分隔，例如“蕾丝 黑色”。颜色和类型按整套穿搭的原始检索词匹配，标题由检索词整理，不是原作者为每套服装命名。</p><p>点开服装：完整看图，滚轮／双指缩放，放大后拖动平移。未放大时可拖出原图，放大后按 Alt 拖出；左右键换服装，F 收藏。</p><p>使用“打开图库.cmd”可启动离线本机服务并直接保存原图。直接双击 HTML 时，原图会在新标签页打开，可右键另存；接收软件不支持拖放时，也可先保存再导入。</p><p>“复制提示词”给出按画面反推的英文描述，只写能看到的单品、版型、细节和颜色，不含生成参数；筛选结果可整批复制。</p><p>参考台最多固定 4 套。收藏、集合和备注保存在浏览器。换入口或清理浏览器前先导出资料；不同入口的记录独立。</p><div class="help-actions"><button type="button" class="btn" id="helpBackup">导出个人资料</button> <label class="btn">导入资料<input type="file" id="helpImport" accept=".json" hidden></label></div><p>原素材作者：ギア。原站允许用于作品创作、商业创作、编辑及参考，禁止图片文件本身的转载、再分发和转售。详情以顶部素材原站的说明为准。</p>','关闭').then(()=>{});
 $('#dialogBody').addEventListener('click',e=>{if(e.target.id==='helpBackup')$('#backupBtn').click();});
 $('#dialogBody').addEventListener('change',async e=>{
   if(e.target.id!=='helpImport'||!e.target.files.length)return;

@@ -19,6 +19,7 @@ jobs:
       - run: node --check src/app.js
       - run: python -m compileall -q scripts tests
       - run: python scripts/build.py
+      - run: python tests/test_prompts.py
       - run: git diff --exit-code -- index.html data/index.zh-CN.json
       - run: python scripts/build.py --hosted
   publish:
