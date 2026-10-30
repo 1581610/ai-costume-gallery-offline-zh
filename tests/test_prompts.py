@@ -7,11 +7,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-# The prompt is pasted straight into an image generator, so it must not carry
-# backdrop, studio or mannequin wording.
+# The prompt is pasted straight into an image generator and must describe the
+# clothes only: no set, camera, mannequin or "as seen in the photo" wording.
 SCENE_WORDS = re.compile(
     r"\b(mannequin|background|backdrop|studio|seamless|invisible|no head|no hands|"
-    r"scene|displayed on|shot on|photo of|photograph)\b",
+    r"scene|displayed|shot on|photo|photograph|image|picture|render|"
+    r"visible|shown|appears?|looks like|worn|model|outfit|costume)\b",
     re.IGNORECASE,
 )
 FLUFF = re.compile(

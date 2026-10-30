@@ -38,3 +38,10 @@ AUT-0011 单排扣、AUT-0160／0200 靴长改踝、AUT-0228 阔腿裤、WIN-008
 `data/captions.en.jsonl` 的 `scene` 字段里作为反推记录，但不再进入提示词。
 `scripts/caption.py build` 现在会从单品清单重新拼出提示词，`tests/test_prompts.py`
 新增断言：提示词必须等于单品清单、且不得出现 mannequin／background／studio 等词。
+
+同一天又清了一遍单品措辞：`visible`／`worn`／`shown`／`not visible`／`costume wings`
+这类描述「照片里看得见什么」而不是「衣服是什么」的词，共 29 条单品改成纯服装写法
+（如「visible vertical seams」→「vertical seams」、「blouse worn open」→「blouse, open front」、
+「shorts visible underneath」→「shorts layered underneath」、「white feathered costume wings」→
+「white feathered wings」）。测试的禁用词表现在覆盖 mannequin／background／studio／visible／
+worn／photo／image／model／appears 等，7672 条单品零命中。
