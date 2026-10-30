@@ -9,7 +9,7 @@ from playwright.sync_api import expect, sync_playwright
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = json.loads((ROOT / "data/index.zh-CN.json").read_text(encoding="utf-8"))
 FIRST, SECOND = INDEX[0], INDEX[1]
-SCENE = "light grey seamless studio background"
+SCENE_WORDS = ("mannequin", "background", "studio", "seamless", "invisible")
 
 
 def main() -> None:
@@ -24,7 +24,9 @@ def main() -> None:
 
         page.locator(".card").first.click()
         expect(page.locator("#viewerPrompt")).to_have_text(FIRST["prompt"])
-        assert page.locator("#viewerPrompt").inner_text().endswith(SCENE)
+        shown = page.locator("#viewerPrompt").inner_text()
+        assert not any(word in shown.lower() for word in SCENE_WORDS), shown
+        assert not shown.rstrip().endswith("."), shown
         page.click("#copyPrompt")
         expect(page.locator("#toast")).to_contain_text("已复制英文生图提示词")
         assert page.evaluate("navigator.clipboard.readText()") == FIRST["prompt"]

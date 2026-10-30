@@ -107,9 +107,9 @@ def check(rec: dict, ids: set[str]) -> list[str]:
 
 def prompt_of(rec: dict) -> str:
     parts = [i["en"].strip().rstrip(",") for i in rec["items"]]
-    body = "; ".join(parts)
-    scene = rec["scene"].strip().rstrip(".")
-    return f"{body}. {scene}"
+    # The prompt is meant to be pasted straight into an image generator, so it
+    # lists garments only: no studio, backdrop or mannequin wording.
+    return "; ".join(parts)
 
 
 def cmd_status(_: argparse.Namespace) -> None:
@@ -172,6 +172,24 @@ def cmd_build(_: argparse.Namespace) -> None:
     missing = [i for i in ids if i not in store]
     if missing:
         print(f"WARNING: {len(missing)} images not captioned yet, e.g. {', '.join(missing[:8])}")
+    stale = [i for i, rec in store.items() if rec.get("prompt") != prompt_of(rec)]
+    if stale:
+        def resync() -> int:
+            current = read_store()
+            for rec in current.values():
+                rec["prompt"] = prompt_of(rec)
+            ordered = [current[i] for i in index_ids() if i in current]
+            tmp = STORE.with_suffix(".jsonl.tmp")
+            tmp.write_text(
+                "".join(json.dumps(r, ensure_ascii=False, separators=(",", ":")) + "\n" for r in ordered),
+                encoding="utf-8",
+            )
+            os.replace(tmp, STORE)
+            return len(current)
+
+        locked(resync)
+        store = read_store()
+        print(f"recomposed {len(stale)} prompts from their items")
     prompts = {i: store[i]["prompt"] for i in ids if i in store}
     PROMPTS.write_text(
         json.dumps(

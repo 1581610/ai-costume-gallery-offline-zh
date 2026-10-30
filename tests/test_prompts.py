@@ -7,7 +7,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
-SCENE = "outfit displayed on invisible mannequin, no head or hands, light grey seamless studio background"
+# The prompt is pasted straight into an image generator, so it must not carry
+# backdrop, studio or mannequin wording.
+SCENE_WORDS = re.compile(
+    r"\b(mannequin|background|backdrop|studio|seamless|invisible|no head|no hands|"
+    r"scene|displayed on|shot on|photo of|photograph)\b",
+    re.IGNORECASE,
+)
 FLUFF = re.compile(
     r"\b(elegant|beautiful|gorgeous|stunning|chic|stylish|fashionable|trendy|"
     r"cute|lovely|pretty|adorable|charming|romantic|luxurious|luxury|premium|"
@@ -31,18 +37,25 @@ def main() -> None:
         prompt = costume.get("prompt")
         assert prompt == table[costume["id"]], f"{costume['id']}: page prompt differs from prompts.en.json"
         assert prompt.isascii(), f"{costume['id']}: prompt is not ASCII"
-        assert prompt.endswith(SCENE), f"{costume['id']}: prompt does not end with the scene sentence"
-        body = prompt[: -len(SCENE)].strip()
-        assert body.endswith("."), f"{costume['id']}: prompt body is not closed before the scene sentence"
-        body = body[:-1].rstrip()
-        assert body and not body.endswith("."), f"{costume['id']}: prompt body is empty or ends with a period"
+        assert SCENE_WORDS.search(prompt) is None, (
+            f"{costume['id']}: prompt mentions a scene, studio or mannequin: "
+            f"{SCENE_WORDS.search(prompt).group(0)!r}"
+        )
+        assert not prompt.endswith("."), f"{costume['id']}: prompt ends with a period"
         assert len(prompt) <= 1600, f"{costume['id']}: prompt is {len(prompt)} chars"
-        assert not FLUFF.search(body), f"{costume['id']}: prompt uses judgement wording"
-        for part in body.split("; "):
+        assert not FLUFF.search(prompt), f"{costume['id']}: prompt uses judgement wording"
+        for part in prompt.split("; "):
             assert part.strip() == part and part, f"{costume['id']}: padded or empty item"
             assert "," in part or len(part) <= 90, f"{costume['id']}: item is vague: {part!r}"
 
-    print(f"PASS {len(table)} English prompts are complete, unique and consistent with the page")
+    for line in (DATA / "captions.en.jsonl").read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        expected = "; ".join(item["en"].strip().rstrip(",") for item in record["items"])
+        assert table[record["id"]] == expected, f"{record['id']}: prompt is not just its item list"
+
+    print(f"PASS {len(table)} English prompts are complete, unique, garment-only and consistent with the page")
 
 
 if __name__ == "__main__":
